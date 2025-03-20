@@ -25,6 +25,7 @@ struct param_serve_context {
 	csp_packet_t * request;
 	csp_packet_t * response;
 	param_queue_t q_response;
+	csp_conn_t * publish_conn;
 };
 
 static int __allocate(struct param_serve_context *ctx) {
@@ -36,13 +37,31 @@ static int __allocate(struct param_serve_context *ctx) {
 }
 
 static void __send(struct param_serve_context *ctx, int end) {
+
+	ctx->response->data[1] = (end) ? PARAM_FLAG_END : 0;
+	ctx->response->length = ctx->q_response.used + 2;
+
 	if (ctx->q_response.version == 1) {
 		ctx->response->data[0] = PARAM_PULL_RESPONSE;
 	} else {
 		ctx->response->data[0] = PARAM_PULL_RESPONSE_V2;
 	}
-	ctx->response->data[1] = (end) ? PARAM_FLAG_END : 0;
-	ctx->response->length = ctx->q_response.used + 2;
+
+	if (ctx->publish_conn != NULL) {
+		ctx->response->data[1] |= PARAM_FLAG_NOACK;
+
+		ctx->response->id.flags = CSP_O_CRC32;
+		ctx->response->id.src = 0;
+	
+		if (ctx->publish_conn == NULL) {
+			printf("param transaction failure\n");
+			return;
+		}
+	
+		csp_send(ctx->publish_conn, ctx->response);
+		return;
+	}
+
 	csp_sendto_reply(ctx->request, ctx->response, CSP_O_SAME);
 }
 
@@ -149,7 +168,7 @@ static void param_serve_pull_request(csp_packet_t * request, int all, int versio
 			uint32_t include_mask = be32toh(ctx.request->data32[1]);
 			uint32_t exclude_mask = 0x00000000;
 			if (version >= 2) {
-			    exclude_mask = be32toh(ctx.request->data32[2]);
+				exclude_mask = be32toh(ctx.request->data32[2]);
 			}
 
 			/* If none of the include matches, continue */
@@ -195,8 +214,9 @@ static void param_serve_push(csp_packet_t * packet, int send_ack, int version, i
 		return;
 	}
 
-	/* If packet->data[1] == 1 ack with pull request */
-	if (packet->data[1] == 1) {
+	if (packet->data[1] & PARAM_FLAG_NOACK) {
+		csp_buffer_free(packet);
+	} else if (packet->data[1] & PARAM_FLAG_PULLWITHACK) {
 		param_serve_pull_request(packet, 0, 2);
 	} else {
 		/* Send ack */
@@ -214,8 +234,8 @@ void param_serve(csp_packet_t * packet) {
 			param_serve_pull_request(packet, 0, 1);
 			break;
 		case PARAM_PULL_REQUEST_V2:
-		    param_serve_pull_request(packet, 0, 2);
-		    break;
+			param_serve_pull_request(packet, 0, 2);
+			break;
 
 		case PARAM_PULL_ALL_REQUEST:
 			param_serve_pull_request(packet, 1, 1);
@@ -331,4 +351,80 @@ void param_serve(csp_packet_t * packet) {
 
 }
 
+#if PARAM_NUM_PUBLISHQUEUES > 0
 
+static uint16_t param_publish_periodicity[PARAM_NUM_PUBLISHQUEUES];
+static uint16_t param_publish_destination[PARAM_NUM_PUBLISHQUEUES];
+static csp_prio_t param_publish_priority[PARAM_NUM_PUBLISHQUEUES];
+
+static struct param_serve_context param_publish_ctx[PARAM_NUM_PUBLISHQUEUES];
+
+__attribute__((weak)) extern param_publish_t * __start_param_publish;
+__attribute__((weak)) extern param_publish_t * __stop_param_publish;
+
+void param_publish_periodic(void) {
+
+	static uint16_t param_publish_countdown[PARAM_NUM_PUBLISHQUEUES];
+
+	/* In case there are no parameters in push queues, we can skip the procedure */
+	if ((&__start_param_publish != NULL) && (&__start_param_publish != &__stop_param_publish)) {
+		return;
+	}
+
+	for (int q = 0; q < PARAM_NUM_PUBLISHQUEUES; q++) {
+
+		/* In case destination is not set, queue is not enabled */
+		if (param_publish_destination[q] == 0 || param_publish_periodicity[q] == 0) {
+			continue;
+		}
+
+		if (param_publish_countdown[q] != 0) {
+			param_publish_countdown[q]--;
+			continue;
+		}
+
+		struct param_serve_context * ctx = &param_publish_ctx[q];
+
+		if (__allocate(ctx) < 0) {
+			printf("Cannot allocate buffer for push queue\n");
+			return;
+		}
+	
+		param_queue_t publishqueue;
+		param_queue_init(&publishqueue, NULL, PARAM_SERVER_MTU, 0, PARAM_QUEUE_TYPE_SET, 2);
+
+		param_publish_t * p = __start_param_publish;
+		while (p < __stop_param_publish) {
+			if (p->queue == q) {
+				__add(ctx, p->param, -1);
+			}
+			p++;
+		}
+		__send(ctx, 1);
+	}
+	return;
+}
+
+void param_publish_configure(param_publish_id_t queueid, uint16_t destination, uint16_t periodicity_ms, csp_prio_t csp_prio) {
+
+    param_publish_destination[queueid] = destination;
+    param_publish_periodicity[queueid] = periodicity_ms;
+    param_publish_priority[queueid] = csp_prio;
+}
+
+void param_publish_init(void) {
+
+	if ((&__start_param_publish != NULL) && (&__start_param_publish != &__stop_param_publish)) {
+		return;
+	}
+
+	for (int q = 0; q < PARAM_NUM_PUBLISHQUEUES; q++) {
+		if (param_publish_destination[q] == 0 || param_publish_periodicity[q] == 0) {
+			continue;
+		}
+
+		param_publish_ctx[q].publish_conn = csp_connect(param_publish_priority[q], param_publish_destination[q], PARAM_PORT_SERVER, 0, CSP_O_CRC32);
+		param_publish_ctx[q].q_response.version = 2;
+	}
+}
+#endif
