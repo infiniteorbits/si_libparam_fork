@@ -9,6 +9,7 @@
 #include <stdarg.h>
 
 #include <csp/csp.h>
+#include <csp/csp_hooks.h>
 #include <mpack/mpack.h>
 
 #include <param/param.h>
@@ -78,14 +79,17 @@ int param_queue_apply(param_queue_t *queue, int apply_local, int from) {
 	int return_code = 0;
 	int atomic_write = 0;
 
+	csp_timestamp_t time_now;
+	csp_clock_get_time(&time_now);
+
 	mpack_reader_t reader;
 	mpack_reader_init_data(&reader, queue->buffer, queue->used);
 	while(reader.data < reader.end) {
 		int id, node, offset = -1;
-		long unsigned int timestamp = 0;
+		long unsigned int timestamp = time_now.tv_sec;
 		param_deserialize_id(&reader, &id, &node, &timestamp, &offset, queue);
 
-		/* If the from address is set, and the nodeid is 0, substitue with the source address */
+		/* If the from address is set, and the nodeid is 0, substitute with the source address */
 		if (node == 0)
 			node = from;
 
@@ -113,6 +117,7 @@ int param_queue_apply(param_queue_t *queue, int apply_local, int from) {
 
 			if (*param->node != 0) {
 				param->timestamp->tv_sec = timestamp;
+				param->timestamp->tv_nsec = time_now.tv_nsec;
 			}
 
 			param_deserialize_from_mpack_to_param(NULL, queue, param, offset, &reader);
