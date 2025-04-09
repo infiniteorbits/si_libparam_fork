@@ -88,6 +88,7 @@ static void param_serve_pull_request(csp_packet_t * request, int all, int versio
 	struct param_serve_context ctx;
 	ctx.request = request;
 	ctx.q_response.version = version;
+	ctx.publish_conn = NULL;
 	/* If packet->data[1] == 1 ack with pull response */
 	int ack_with_pull = request->data[1] == 1 ? 1 : 0;
 
@@ -362,26 +363,27 @@ static struct param_serve_context param_publish_ctx[PARAM_NUM_PUBLISHQUEUES];
 __attribute__((weak)) extern param_publish_t * __start_param_publish;
 __attribute__((weak)) extern param_publish_t * __stop_param_publish;
 
-void param_publish_periodic(void) {
+void param_publish_periodic(uint16_t periodicity) {
 
-	static uint16_t param_publish_countdown[PARAM_NUM_PUBLISHQUEUES];
+	static int16_t param_publish_countdown[PARAM_NUM_PUBLISHQUEUES];
 
 	/* In case there are no parameters in push queues, we can skip the procedure */
-	if ((&__start_param_publish != NULL) && (&__start_param_publish != &__stop_param_publish)) {
+	if ((__start_param_publish == NULL) || (__start_param_publish == __stop_param_publish)) {
 		return;
 	}
 
 	for (int q = 0; q < PARAM_NUM_PUBLISHQUEUES; q++) {
 
-		/* In case destination is not set, queue is not enabled */
-		if (param_publish_destination[q] == 0 || param_publish_periodicity[q] == 0) {
+		if (param_publish_ctx[q].publish_conn == NULL) {
 			continue;
 		}
 
-		if (param_publish_countdown[q] != 0) {
-			param_publish_countdown[q]--;
+		if (param_publish_countdown[q] > periodicity) {
+			param_publish_countdown[q] -= periodicity;
 			continue;
 		}
+
+		param_publish_countdown[q] = param_publish_periodicity[q];
 
 		struct param_serve_context * ctx = &param_publish_ctx[q];
 
@@ -393,8 +395,8 @@ void param_publish_periodic(void) {
 		param_queue_t publishqueue;
 		param_queue_init(&publishqueue, NULL, PARAM_SERVER_MTU, 0, PARAM_QUEUE_TYPE_SET, 2);
 
-		param_publish_t * p = __start_param_publish;
-		while (p < __stop_param_publish) {
+		for (int i = 0; i < (&__stop_param_publish - &__start_param_publish); i++) {
+			param_publish_t * p = &__start_param_publish[i];
 			if (p->queue == q) {
 				__add(ctx, p->param, -1);
 			}
@@ -414,7 +416,7 @@ void param_publish_configure(param_publish_id_t queueid, uint16_t destination, u
 
 void param_publish_init(void) {
 
-	if ((&__start_param_publish != NULL) && (&__start_param_publish != &__stop_param_publish)) {
+	if ((__start_param_publish == NULL) || (__start_param_publish == __stop_param_publish)) {
 		return;
 	}
 

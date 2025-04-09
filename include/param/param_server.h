@@ -88,13 +88,13 @@ typedef struct param_publish_s {
 typedef enum {
 	PARAM_PUBLISHQUEUE_0 = 0,
 #if PARAM_NUM_PUBLISHQUEUES >= 2
-	PARAM_PUBLISHQUEUE_1 = 0,
+	PARAM_PUBLISHQUEUE_1 = 1,
 #endif
 #if PARAM_NUM_PUBLISHQUEUES >= 3
-	PARAM_PUBLISHQUEUE_2 = 0,
+	PARAM_PUBLISHQUEUE_2 = 2,
 #endif
 #if PARAM_NUM_PUBLISHQUEUES >= 4
-	PARAM_PUBLISHQUEUE_3 = 0,
+	PARAM_PUBLISHQUEUE_3 = 3,
 #endif
 } param_publish_id_t;
 
@@ -106,7 +106,7 @@ param_publish_t __param_publish_##paramname##queueid = { \
 __attribute__((section("param_publish"))) \
 param_publish_t const * _param_publish_##paramname##queueid = & __param_publish_##paramname##queueid;
 
-void param_publish_periodic(void);
+void param_publish_periodic(uint16_t periodicity);
 void param_publish_configure(param_publish_id_t queueid, uint16_t destination, uint16_t periodicity_ms, csp_prio_t csp_prio);
 void param_publish_init(void);
 #endif
