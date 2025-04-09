@@ -357,6 +357,7 @@ void param_serve(csp_packet_t * packet) {
 static uint16_t param_publish_periodicity[PARAM_NUM_PUBLISHQUEUES];
 static uint16_t param_publish_destination[PARAM_NUM_PUBLISHQUEUES];
 static csp_prio_t param_publish_priority[PARAM_NUM_PUBLISHQUEUES];
+static param_shall_publish_t param_shall_publish;
 
 static struct param_serve_context param_publish_ctx[PARAM_NUM_PUBLISHQUEUES];
 
@@ -366,11 +367,6 @@ __attribute__((weak)) extern param_publish_t * __stop_param_publish;
 void param_publish_periodic(uint16_t periodicity) {
 
 	static int16_t param_publish_countdown[PARAM_NUM_PUBLISHQUEUES];
-
-	/* In case there are no parameters in push queues, we can skip the procedure */
-	if ((__start_param_publish == NULL) || (__start_param_publish == __stop_param_publish)) {
-		return;
-	}
 
 	for (int q = 0; q < PARAM_NUM_PUBLISHQUEUES; q++) {
 
@@ -384,6 +380,10 @@ void param_publish_periodic(uint16_t periodicity) {
 		}
 
 		param_publish_countdown[q] = param_publish_periodicity[q];
+
+		if (param_shall_publish && !param_shall_publish(q)) {
+			continue;
+		}
 
 		struct param_serve_context * ctx = &param_publish_ctx[q];
 
@@ -400,7 +400,6 @@ void param_publish_periodic(uint16_t periodicity) {
 			if (p->queue == q) {
 				__add(ctx, p->param, -1);
 			}
-			p++;
 		}
 		__send(ctx, 1);
 	}
@@ -414,7 +413,9 @@ void param_publish_configure(param_publish_id_t queueid, uint16_t destination, u
     param_publish_priority[queueid] = csp_prio;
 }
 
-void param_publish_init(void) {
+void param_publish_init(param_shall_publish_t shall_publish) {
+
+	param_shall_publish = shall_publish;
 
 	if ((__start_param_publish == NULL) || (__start_param_publish == __stop_param_publish)) {
 		return;
@@ -424,7 +425,6 @@ void param_publish_init(void) {
 		if (param_publish_destination[q] == 0 || param_publish_periodicity[q] == 0) {
 			continue;
 		}
-
 		param_publish_ctx[q].publish_conn = csp_connect(param_publish_priority[q], param_publish_destination[q], PARAM_PORT_SERVER, 0, CSP_O_CRC32);
 		param_publish_ctx[q].q_response.version = 2;
 	}
