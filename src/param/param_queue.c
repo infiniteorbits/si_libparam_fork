@@ -81,12 +81,14 @@ int param_queue_apply(param_queue_t *queue, int apply_local, int from) {
 
 	csp_timestamp_t time_now;
 	csp_clock_get_time(&time_now);
+	queue->last_timestamp = time_now.tv_sec;
+	queue->client_timestamp = time_now.tv_sec;
 
 	mpack_reader_t reader;
 	mpack_reader_init_data(&reader, queue->buffer, queue->used);
 	while(reader.data < reader.end) {
 		int id, node, offset = -1;
-		long unsigned int timestamp = time_now.tv_sec;
+		long unsigned int timestamp;
 		param_deserialize_id(&reader, &id, &node, &timestamp, &offset, queue);
 
 		/* If the from address is set, and the nodeid is 0, substitute with the source address */

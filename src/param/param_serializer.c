@@ -121,6 +121,7 @@ void param_deserialize_id(mpack_reader_t *reader, int *id, int *node, long unsig
 
 		*id = param_parse_short_id_paramid(short_id);
 		*node = param_parse_short_id_node(short_id);
+		*timestamp = 0;
 
 	} else {
 
@@ -171,7 +172,7 @@ void param_deserialize_id(mpack_reader_t *reader, int *id, int *node, long unsig
 		}
 
 		if ((header & ~known_header_mask) != 0) {
-			printf("Received unknown param serialized header bits: 0x%x\n", header);
+			printf("ERROR: Received unknown param serialized header bits: 0x%x\n", header);
 		}
 
 	}
