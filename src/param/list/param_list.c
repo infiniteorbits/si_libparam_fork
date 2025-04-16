@@ -367,6 +367,7 @@ typedef struct param_heap_s {
 		uint8_t *buffer;
 	};
 	csp_timestamp_t timestamp;
+	uint16_t node;
 	char name[36];
 	char unit[10];
 	char help[150];
@@ -389,6 +390,7 @@ static param_heap_t * param_list_alloc(int type, int array_size) {
 	}
 
 	param_heap_t* param = &param_heap[param_heap_used];
+	memset(param, 0, sizeof(param_heap_t));
 	param_heap_used++;
 
 	param->buffer = &param_buffer[param_buffer_used];
@@ -467,7 +469,7 @@ int param_list_unpack(int node, void * data, int length, int list_version, int i
 	uint8_t type;
 	unsigned int size;
 	uint32_t mask;
-	uint16_t storage_type = -1;
+	int storage_type = VMEM_TYPE_UNKNOWN;
 	char * name;
 	char * unit;
 	char * help;
@@ -592,7 +594,7 @@ void param_list_destroy(param_t * param) {
 param_t * param_list_create_remote(int id, int node, int type, uint32_t mask, int array_size, char * name, char * unit, char * help, int storage_type) {
 
 	if (storage_type == 0xFFFF) {
-		storage_type = -1;
+		storage_type = VMEM_TYPE_UNKNOWN;
 	}
 
 	if (array_size < 1)
