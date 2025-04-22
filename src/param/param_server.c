@@ -358,13 +358,18 @@ static uint16_t param_publish_periodicity[PARAM_NUM_PUBLISHQUEUES];
 static uint16_t param_publish_destination[PARAM_NUM_PUBLISHQUEUES];
 static csp_prio_t param_publish_priority[PARAM_NUM_PUBLISHQUEUES];
 static param_shall_publish_t param_shall_publish;
+static uint32_t last_periodic;
 
 static struct param_serve_context param_publish_ctx[PARAM_NUM_PUBLISHQUEUES];
 
 __attribute__((weak)) extern param_publish_t * __start_param_publish;
 __attribute__((weak)) extern param_publish_t * __stop_param_publish;
 
-void param_publish_periodic(uint16_t periodicity) {
+void param_publish_periodic() {
+
+	uint32_t timestamp = csp_get_ms();
+	uint32_t increment = timestamp - last_periodic; // Implicitely handling timestamp wraparounds
+	last_periodic = timestamp;
 
 	static int16_t param_publish_countdown[PARAM_NUM_PUBLISHQUEUES];
 
@@ -374,8 +379,8 @@ void param_publish_periodic(uint16_t periodicity) {
 			continue;
 		}
 
-		if (param_publish_countdown[q] > periodicity) {
-			param_publish_countdown[q] -= periodicity;
+		if (param_publish_countdown[q] > increment) {
+			param_publish_countdown[q] -= increment;
 			continue;
 		}
 
@@ -428,5 +433,7 @@ void param_publish_init(param_shall_publish_t shall_publish) {
 		param_publish_ctx[q].publish_conn = csp_connect(param_publish_priority[q], param_publish_destination[q], PARAM_PORT_SERVER, 0, CSP_O_CRC32);
 		param_publish_ctx[q].q_response.version = 2;
 	}
+
+	last_periodic = csp_get_ms();
 }
 #endif
