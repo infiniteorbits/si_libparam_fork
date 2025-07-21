@@ -1,4 +1,4 @@
 [wrap-git]
-url = https://github.com/spaceinventor/libcsp.git
-revision = HEAD
+url = git@github.com:infiniteorbits/si_libcsp_fork.git
+revision = csh-v2.8
 depth = 1
